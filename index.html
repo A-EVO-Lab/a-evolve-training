@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A-Evolve-Training · Autonomous post-training of a 30B model</title>
+<style>
+  :root{
+    --paper:#f0eadd; --paper2:#e9e1d1; --card:#f6f1e7; --card2:#efe7d8;
+    --line:#cfc7b6; --line2:#d8cfbf;
+    --ink:#211e19; --ink2:#3a352d; --mut:#6e675b; --mut2:#8c8578;
+    --rust:#bd4a26; --rustd:#8f3a1f; --clay:#a4673f; --green:#2f6b54; --gold:#9c7526;
+    --dark:#1b1814;
+    --serif:Georgia,'Songti SC','Source Han Serif SC','Times New Roman',serif;
+    --mono:'SF Mono',ui-monospace,'JetBrains Mono',Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--paper);color:var(--ink2);font-family:var(--serif);
+    line-height:1.7;-webkit-font-smoothing:antialiased;font-size:17.5px}
+  a{color:var(--rust)}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:940px;margin:0 auto;padding:0 26px}
+  .mono{font-family:var(--mono)}
+  em{font-style:italic;color:var(--rustd)}
+
+  /* nav */
+  nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(8px);
+    background:rgba(240,234,221,.82);border-bottom:1px solid var(--line)}
+  nav .wrap{display:flex;align-items:center;justify-content:space-between;height:62px}
+  .brand{font-family:var(--mono);font-weight:600;font-size:15px;letter-spacing:1px;color:var(--ink)}
+  .brand span{color:var(--rust)}
+  .navlinks{display:flex;gap:26px;font-family:var(--mono);font-size:12.5px;letter-spacing:.5px}
+  .navlinks a{color:var(--mut)}
+  .navlinks a:hover{color:var(--rust);text-decoration:none}
+  @media(max-width:700px){.navlinks{display:none}}
+
+  /* hero */
+  header{padding:92px 0 70px;border-bottom:1px solid var(--line)}
+  .eyebrow{font-family:var(--mono);font-size:12.5px;letter-spacing:3px;text-transform:uppercase;
+    color:var(--mut2);margin-bottom:26px}
+  h1{font-family:var(--serif);font-size:48px;line-height:1.16;font-weight:700;letter-spacing:-.5px;
+    color:var(--ink);max-width:880px}
+  h1 .hl{color:var(--rust)}
+  .sub{margin-top:26px;font-size:21px;font-style:italic;color:var(--mut);max-width:760px;line-height:1.5}
+  .sub b{font-style:normal;color:var(--ink);font-weight:700}
+
+  .scope{margin-top:34px;background:var(--dark);border-radius:10px;padding:18px 22px;
+    max-width:780px;color:#e7ddcb;font-size:15.5px;line-height:1.6}
+  .scope b{color:#f0eadd}
+  .scope .dot{color:var(--rust);font-weight:700;font-family:var(--mono)}
+
+  /* stat row */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:42px;max-width:780px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px}
+  .stat .n{font-family:var(--mono);font-size:30px;font-weight:600;color:var(--rust);letter-spacing:-1px}
+  .stat .n .vs{color:var(--mut);font-size:17px}
+  .stat .l{font-size:13.5px;color:var(--mut);margin-top:8px;line-height:1.45}
+  @media(max-width:700px){.stats{grid-template-columns:1fr}h1{font-size:34px}.sub{font-size:18px}}
+
+  /* sections */
+  section{padding:74px 0;border-bottom:1px solid var(--line)}
+  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:2.5px;text-transform:uppercase;
+    color:var(--rust);margin-bottom:16px}
+  h2{font-family:var(--serif);font-size:33px;font-weight:700;letter-spacing:-.3px;
+    color:var(--ink);margin-bottom:20px;line-height:1.2}
+  h2 + .lead{font-size:19px;font-style:italic;color:var(--mut);max-width:730px;margin-bottom:8px;line-height:1.5}
+  p{margin-bottom:17px;color:var(--ink2)}
+  .note{font-size:12.5px;color:var(--mut2);font-family:var(--mono);margin-top:10px;letter-spacing:.3px}
+
+  /* chart */
+  .chartcard{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:28px 26px 16px;margin-top:28px;position:relative}
+  .chartcard .cap{font-size:14px;color:var(--mut);margin-top:12px;font-style:italic;line-height:1.5}
+  .legend{display:flex;gap:24px;font-family:var(--mono);font-size:12px;color:var(--mut);margin-bottom:6px;letter-spacing:.3px}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:7px;vertical-align:middle}
+  /* interactive chart */
+  .cg-line{transition:stroke-dashoffset 1.5s cubic-bezier(.4,0,.2,1)}
+  .cg-pt{opacity:0;transform:scale(.2);transform-origin:center;transform-box:fill-box;
+    transition:opacity .45s ease,transform .45s cubic-bezier(.34,1.56,.64,1)}
+  .cg-pt.show{opacity:1;transform:scale(1)}
+  .cg-hit{fill:transparent;cursor:pointer}
+  .cg-hit.act ~ * , .cg-col.act{}
+  .cg-band{fill:#bd4a26;opacity:0}
+  .cg-tip{position:absolute;z-index:30;pointer-events:none;opacity:0;
+    transform:translate(-50%,calc(-100% - 16px));transition:opacity .14s ease;
+    width:330px;max-width:85vw;background:var(--dark);color:#e7ddcb;border-radius:11px;
+    padding:15px 17px;box-shadow:0 14px 38px rgba(20,15,10,.4);font-family:var(--serif);
+    font-size:14px;line-height:1.55}
+  .cg-tip.on{opacity:1}
+  .cg-tip .r{font-family:var(--mono);font-size:11.5px;letter-spacing:1.5px;color:#d98a5a;
+    text-transform:uppercase;margin-bottom:7px}
+  .cg-tip .ax{color:#b6ad9a;font-style:italic;font-size:13px;margin-bottom:9px}
+  .cg-tip .sc{display:flex;gap:8px;margin-bottom:9px;font-family:var(--mono);font-size:11.5px}
+  .cg-tip .sc span{background:#2a241d;border-radius:6px;padding:4px 9px;color:#cdbfa8}
+  .cg-tip .sc b{color:#f0eadd;font-weight:600}
+  .cg-tip .fd{color:#cdbfa8;font-size:13.5px}
+  .cg-tip:after{content:"";position:absolute;left:50%;bottom:-7px;transform:translateX(-50%);
+    border:7px solid transparent;border-top-color:var(--dark);border-bottom:0}
+  .cg-hint{font-family:var(--mono);font-size:11px;letter-spacing:.5px;color:var(--mut2)}
+  .cg-hit:hover{fill:rgba(189,74,38,.07)}
+  .cg-guide,.cg-ring{opacity:0;transition:opacity .12s ease;pointer-events:none}
+  .cg-cue{position:absolute;top:18px;right:20px;z-index:15;background:#bd4a26;color:#f0eadd;
+    font-family:var(--mono);font-size:11px;letter-spacing:.5px;padding:6px 12px;border-radius:20px;
+    box-shadow:0 4px 14px rgba(189,74,38,.3)}
+  .cg-cue.hide{opacity:0;transition:opacity .3s ease;pointer-events:none}
+  @keyframes cgpulse{0%{r:6px;opacity:.85}70%{r:18px;opacity:0}100%{r:18px;opacity:0}}
+  #cgPulse{animation:cgpulse 2s ease-out infinite}
+  #cgPulse.hide{display:none}
+  @media(max-width:700px){.cg-cue{top:12px;right:12px;font-size:10px}}
+
+  /* findings */
+  .finds{display:grid;grid-template-columns:1fr;gap:18px;margin-top:10px}
+  .find{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:26px 28px;
+    position:relative;overflow:hidden}
+  .find:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--rust)}
+  .find.g:before{background:var(--green)}
+  .find.gd:before{background:var(--gold)}
+  .find .tag{font-family:var(--mono);font-size:11.5px;letter-spacing:1.5px;text-transform:uppercase;
+    color:var(--rust);margin-bottom:12px}
+  .find.g .tag{color:var(--green)}
+  .find.gd .tag{color:var(--gold)}
+  .find h3{font-family:var(--serif);font-size:22px;font-weight:700;color:var(--ink);margin-bottom:11px;
+    letter-spacing:-.2px;line-height:1.3}
+  .find p{margin-bottom:0;color:var(--ink2);font-size:16.5px}
+
+  /* table */
+  table{width:100%;border-collapse:collapse;margin-top:26px;font-size:15px}
+  th,td{text-align:left;padding:15px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--mut2);font-weight:600}
+  td:first-child{font-family:var(--mono);color:var(--rust);white-space:nowrap;font-size:13px;font-weight:600}
+  td{color:var(--ink2)}
+  .ratio{font-family:var(--mono);color:var(--clay);font-weight:700;white-space:nowrap}
+  @media(max-width:700px){table,thead,tbody,th,td,tr{display:block}
+    th{display:none}td{border:none;padding:3px 0}
+    tr{border-bottom:1px solid var(--line);padding:16px 0}
+    td:first-child{font-size:15px;margin-bottom:5px}}
+
+  /* pillars */
+  .pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:28px}
+  .pill{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px}
+  .pill .num{font-family:var(--mono);font-size:12px;letter-spacing:1px;color:var(--rust);margin-bottom:10px;text-transform:uppercase}
+  .pill h4{font-family:var(--serif);font-size:18px;font-weight:700;color:var(--ink);margin-bottom:9px}
+  .pill p{font-size:15px;color:var(--mut);margin:0;line-height:1.55}
+  @media(max-width:700px){.pillars{grid-template-columns:1fr}}
+  .principle{margin-top:22px;background:var(--card2);border:1px solid var(--line2);border-left:5px solid var(--rust);
+    border-radius:10px;padding:22px 26px}
+  .principle p{margin:0;color:var(--ink2);font-size:16.5px}
+  .principle b{color:var(--rust)}
+
+  /* limitations */
+  .limbox{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 28px;margin-top:20px}
+  .limrow{padding:19px 0;border-bottom:1px solid var(--line);display:flex;gap:18px;align-items:flex-start}
+  .limrow:last-child{border-bottom:none}
+  .limrow .mk{font-family:var(--mono);color:var(--clay);font-size:12px;letter-spacing:.5px;margin-top:3px;
+    white-space:nowrap;min-width:74px}
+  .limrow div b{color:var(--ink);font-weight:700}
+  .limrow .txt{color:var(--mut);font-size:16px;line-height:1.5}
+
+  /* series cta */
+  .series{text-align:center}
+  .series .kicker{display:block}
+  .series h2{margin-bottom:16px}
+  .series .lead{margin:0 auto 30px;font-style:italic}
+  .btns{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+  .btn{display:inline-block;padding:13px 26px;border-radius:9px;font-family:var(--mono);font-size:13.5px;
+    letter-spacing:.4px;font-weight:600}
+  .btn.primary{background:var(--rust);color:#f0eadd}
+  .btn.primary:hover{background:var(--rustd);text-decoration:none}
+  .btn.ghost{border:1px solid var(--line);color:var(--ink2);background:var(--card)}
+  .btn.ghost:hover{border-color:var(--rust);color:var(--rust);text-decoration:none}
+
+  /* cite */
+  pre{background:var(--dark);border-radius:10px;padding:22px;overflow-x:auto;
+    font-family:var(--mono);font-size:13px;color:#cdbfa8;line-height:1.7;text-align:left}
+  pre .k{color:#e0a87f}
+
+  footer{padding:44px 0 60px;color:var(--mut);font-size:13px;font-family:var(--mono);letter-spacing:.3px}
+  footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px}
+
+  .draft{background:var(--dark);color:#d98a5a;font-family:var(--mono);
+    font-size:12px;text-align:center;padding:9px;letter-spacing:1px}
+
+  /* takeaway bar (echoes the SVG) */
+  .takeaway{background:var(--dark);border-radius:8px;padding:20px 26px;margin-top:30px;
+    color:#f0eadd;font-size:16px;line-height:1.55}
+  .takeaway b{color:#d98a5a}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <div class="brand">A&#8209;Evolve<span>·Training</span></div>
+    <div class="navlinks">
+      <a href="#result">Result</a>
+      <a href="#hard">Why it's hard</a>
+      <a href="#findings">Findings</a>
+      <a href="#system">System</a>
+      <a href="#limits">Limitations</a>
+      <a href="#series">The series</a>
+    </div>
+  </div>
+</nav>
+
+<header>
+  <div class="wrap">
+    <div class="eyebrow">A-EVO Lab · Autonomous research at frontier scale</div>
+    <h1>An AI ran the <span class="hl">entire post-training loop</span> for a 30B model — with no human in the loop.</h1>
+    <p class="sub">Four self-directed rounds on a production GPU cluster. The autonomously produced model placed <b>8th of ~4,000</b> on NVIDIA's Nemotron Reasoning Challenge — one point behind the top human team.</p>
+
+    <p style="margin-top:18px;font-size:16.5px;color:var(--mut);max-width:760px;line-height:1.5">The same autonomous system has since post-trained the <b style="color:var(--ink)">120B and 550B</b> Nemotron models end-to-end — evidence the loop <em>closes</em> at that scale too. (No public human baseline exists there yet, so we report it as infrastructure evidence, not a competitiveness claim.)</p>
+
+    <div class="scope">
+      <span class="dot">▸ </span><b>Read this honestly.</b> This is one auditable datapoint at a precisely stated scope (30B base, single benchmark, single un-replicated discovery). It is <b>not</b> a claim that autonomous research is "solved," and not a head-to-head win over human researchers in general.
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="n">0.86 <span class="vs">vs 0.87</span></div>
+        <div class="l">Autonomous loop vs. top human submission</div>
+      </div>
+      <div class="stat">
+        <div class="n">8<span class="vs"> / ~4,000</span></div>
+        <div class="l">Public leaderboard rank at submission</div>
+      </div>
+      <div class="stat">
+        <div class="n">0</div>
+        <div class="l">Human interventions across all four rounds</div>
+      </div>
+    </div>
+
+    <div style="margin-top:38px;background:var(--card2);border:1px solid var(--line2);border-left:5px solid var(--rust);border-radius:12px;padding:24px 26px;max-width:790px">
+      <div style="font-family:var(--mono);font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--rust);margin-bottom:11px">The counter-intuitive headline</div>
+      <p style="margin:0;font-size:18.5px;color:var(--ink);line-height:1.55">The score isn't the point. Mid-campaign, the loop detected that its <b>own internal dev metric had stopped tracking external performance</b> on the visibly weakest domain — candidates pushed it to record highs without moving the real target — and revised its own search policy in response: it stopped asking for higher dev and instead asked for interventions that lowered the now-misleading proxy while improving the external target. We treat this as direct, auditable evidence that a scaled autonomous loop can produce <b style="color:var(--rust)">discovery, not only optimisation</b>: it detected that the measurement frame itself had become misleading and changed what counted as evidence.</p>
+    </div>
+
+    <p class="note" style="margin-top:22px">Notes — NVIDIA Nemotron Reasoning Challenge; public leaderboard standing as of 2026-06-01. Rank 8 of ~4,000 entries.</p>
+  </div>
+</header>
+
+<!-- RESULT / CHART -->
+<section id="result">
+  <div class="wrap">
+    <div class="kicker">The result</div>
+    <h2>Closing the gap to the top human, round by round</h2>
+    <p class="lead">After the human authored the initial substrate, the loop ran unattended. The leaderboard score improved monotonically across four rounds and converged one point below the best human team.</p>
+
+    <div class="chartcard" id="cgCard">
+      <div class="legend">
+        <span><i style="background:#bd4a26"></i>AUTONOMOUS · LEADERBOARD</span>
+        <span><i style="background:#a4673f"></i>AUTONOMOUS · INTERNAL DEV</span>
+        <span><i style="background:#8c8578"></i>TOP HUMAN — 0.87</span>
+      </div>
+      <svg viewBox="0 0 720 330" width="100%" role="img" aria-label="Leaderboard and dev score by round — hover a round for details">
+        <!-- grid 0.94(40)..0.78(280), 15px per 0.01 -->
+        <g stroke="#e0d8c6" stroke-width="1">
+          <line x1="60" y1="40" x2="665" y2="40"/>
+          <line x1="60" y1="70" x2="665" y2="70"/>
+          <line x1="60" y1="100" x2="665" y2="100"/>
+          <line x1="60" y1="130" x2="665" y2="130"/>
+          <line x1="60" y1="160" x2="665" y2="160"/>
+          <line x1="60" y1="190" x2="665" y2="190"/>
+          <line x1="60" y1="220" x2="665" y2="220"/>
+          <line x1="60" y1="250" x2="665" y2="250"/>
+          <line x1="60" y1="280" x2="665" y2="280"/>
+        </g>
+        <g fill="#a39a86" font-family="monospace" font-size="11" text-anchor="end">
+          <text x="50" y="44">0.94</text><text x="50" y="74">0.92</text>
+          <text x="50" y="104">0.90</text><text x="50" y="134">0.88</text>
+          <text x="50" y="164">0.86</text><text x="50" y="194">0.84</text>
+          <text x="50" y="224">0.82</text><text x="50" y="254">0.80</text>
+          <text x="50" y="284">0.78</text>
+        </g>
+
+        <!-- human baseline 0.87 -> y=145 -->
+        <line x1="60" y1="145" x2="665" y2="145" stroke="#8c8578" stroke-width="1.6" stroke-dasharray="6 5"/>
+        <text x="662" y="138" fill="#6e675b" font-family="monospace" font-size="11.5" text-anchor="end">human #1 · 0.87</text>
+
+        <!-- DEV line: .79(265) .82(220) .84(190) .93(55) .89(115) -->
+        <path id="cgDev" class="cg-line" fill="none" stroke="#a4673f" stroke-width="2" stroke-dasharray="5 4"
+          d="M100,265 L235,220 L370,190 L505,55 L640,115"/>
+        <!-- LB line: .80(250) .82(220) .84(190) .85(175) .86(160) -->
+        <path id="cgLB" class="cg-line" fill="none" stroke="#bd4a26" stroke-width="3"
+          d="M100,250 L235,220 L370,190 L505,175 L640,160"/>
+
+        <!-- dev points -->
+        <g fill="#a4673f">
+          <circle class="cg-pt" cx="100" cy="265" r="4"/><circle class="cg-pt" cx="235" cy="220" r="4"/>
+          <circle class="cg-pt" cx="370" cy="190" r="4"/><circle class="cg-pt" cx="505" cy="55" r="5"/>
+          <circle class="cg-pt" cx="640" cy="115" r="4.5"/>
+        </g>
+        <!-- lb points (anchors for tooltip) -->
+        <g fill="#bd4a26">
+          <circle id="lbpt0" class="cg-pt" cx="100" cy="250" r="5"/>
+          <circle id="lbpt1" class="cg-pt" cx="235" cy="220" r="5"/>
+          <circle id="lbpt2" class="cg-pt" cx="370" cy="190" r="5"/>
+          <circle id="lbpt3" class="cg-pt" cx="505" cy="175" r="5"/>
+          <circle id="lbpt4" class="cg-pt" cx="640" cy="160" r="6.5"/>
+        </g>
+
+        <!-- endpoint labels -->
+        <text x="652" y="113" fill="#a4673f" font-family="monospace" font-size="11" text-anchor="start">dev .89</text>
+        <text x="652" y="172" fill="#bd4a26" font-family="monospace" font-size="11" font-weight="700" text-anchor="start">LB .86</text>
+
+        <!-- divergence note: R3 proxy spike -->
+        <text x="505" y="44" fill="#a4673f" font-family="monospace" font-size="10.5" text-anchor="middle">dev 0.93 ▲ — proxy spike, LB only 0.85</text>
+
+        <!-- x labels -->
+        <g fill="#8c8578" font-family="monospace" font-size="11.5" text-anchor="middle">
+          <text x="100" y="306">R0</text><text x="235" y="306">R1</text>
+          <text x="370" y="306">R2</text><text x="505" y="306">R3</text><text x="640" y="306">R4</text>
+        </g>
+
+        <!-- hover feedback elements -->
+        <line id="cgGuide" class="cg-guide" y1="34" y2="292" stroke="#bd4a26" stroke-width="1.4" stroke-dasharray="3 4"/>
+        <circle id="cgRingLB" class="cg-ring" r="9" fill="none" stroke="#bd4a26" stroke-width="2.4"/>
+        <circle id="cgRingDev" class="cg-ring" r="8" fill="none" stroke="#a4673f" stroke-width="2.4"/>
+        <!-- attention pulse on the proxy-spike round (R3) -->
+        <circle id="cgPulse" cx="505" cy="55" r="6" fill="none" stroke="#a4673f" stroke-width="2.4"/>
+
+        <!-- hover columns (on top) -->
+        <rect class="cg-hit" data-i="0" x="60"    y="34" width="107" height="258"/>
+        <rect class="cg-hit" data-i="1" x="167.5" y="34" width="135" height="258"/>
+        <rect class="cg-hit" data-i="2" x="302.5" y="34" width="135" height="258"/>
+        <rect class="cg-hit" data-i="3" x="437.5" y="34" width="135" height="258"/>
+        <rect class="cg-hit" data-i="4" x="572.5" y="34" width="92"  height="258"/>
+      </svg>
+      <div class="cg-cue" id="cgCue">✦ hover / tap a round</div>
+      <div class="cg-tip" id="cgTip"></div>
+      <div class="cap">Public leaderboard (LB) and internal dev score by round. <span class="cg-hint">↳ hover any round</span> for its search mode and what the loop learned. Note round 3: dev spikes to 0.93 while LB holds at 0.85 — the loop drove its own proxy to record highs without moving the real target. In round 4 it changed strategy and recovered external progress (LB 0.86). Round 0 is the human-authored substrate.</div>
+    </div>
+    <script>
+    (function(){
+      var card=document.getElementById('cgCard'), tip=document.getElementById('cgTip');
+      var guide=document.getElementById('cgGuide'), ringLB=document.getElementById('cgRingLB'),
+          ringDev=document.getElementById('cgRingDev'), pulse=document.getElementById('cgPulse'),
+          cue=document.getElementById('cgCue');
+      var X=[100,235,370,505,640], LBY=[250,220,190,175,160], DEVY=[265,220,190,55,115];
+      var data=[
+        {r:"Round 0 · substrate", mode:"substrate", dev:"0.79", lb:"0.80",
+         fd:"Fixed human-authored baseline. All candidates fork from this substrate; winning recipes update the search policy, never the substrate itself."},
+        {r:"Round 1", mode:"recipe stabilisation", dev:"0.82", lb:"0.82",
+         fd:"Basic training levers were still causal — schedule shape, optimizer hygiene, LoRA capacity, and clipping moved both the proxy and the external target. At this stage, maximising dev was a reasonable strategy."},
+        {r:"Round 2", mode:"stack-and-calibrate", dev:"0.84", lb:"0.84",
+         fd:"Early improvements stacked, but seed noise grew large enough that small dev gains could no longer be trusted. The loop began treating replication and calibration as part of the research problem."},
+        {r:"Round 3", mode:"proxy exploitation", dev:"0.93", lb:"0.85",
+         fd:"The loop found how to drive dev to record highs — fitting the visibly weak equation domain from a long-standing ~0.65 ceiling up to 0.82 — but the external target barely moved. This falsified its own premise that the easiest proxy dimension to improve was the causal bottleneck."},
+        {r:"Round 4", mode:"proxy-aware search", dev:"0.89", lb:"0.86",
+         fd:"The loop changed strategy: instead of simply raising dev, it searched for interventions that should transfer under the external distribution — domain rebalancing, reweighted checkpoint selection. This recovered external progress and produced the campaign-best LB score."}
+      ];
+      function reveal(){
+        ['cgLB','cgDev'].forEach(function(id){
+          var p=document.getElementById(id), L=p.getTotalLength();
+          p.style.strokeDasharray=L+' '+L; p.style.strokeDashoffset=L;
+          p.getBoundingClientRect(); p.style.strokeDashoffset=0;
+        });
+        card.querySelectorAll('.cg-pt').forEach(function(c,i){
+          c.style.transitionDelay=(450+i*90)+'ms';
+          requestAnimationFrame(function(){c.classList.add('show');});
+        });
+      }
+      if('IntersectionObserver' in window){
+        var io=new IntersectionObserver(function(es){es.forEach(function(e){
+          if(e.isIntersecting){reveal();io.disconnect();}});},{threshold:.3});
+        io.observe(card);
+      } else { reveal(); }
+      function hide(){tip.classList.remove('on');guide.style.opacity=0;ringLB.style.opacity=0;ringDev.style.opacity=0;}
+      card.querySelectorAll('.cg-hit').forEach(function(h){
+        function show(){
+          var i=+h.getAttribute('data-i'), d=data[i];
+          tip.innerHTML='<div class="r">'+d.r+'</div>'+
+            (d.mode!=='substrate'?'<div class="ax">search mode: '+d.mode+'</div>':'')+
+            '<div class="sc"><span>Dev <b>'+d.dev+'</b></span><span>LB <b>'+d.lb+'</b></span></div>'+
+            '<div class="fd">'+d.fd+'</div>';
+          // visual feedback
+          guide.setAttribute('x1',X[i]); guide.setAttribute('x2',X[i]); guide.style.opacity=1;
+          ringLB.setAttribute('cx',X[i]); ringLB.setAttribute('cy',LBY[i]); ringLB.style.opacity=1;
+          ringDev.setAttribute('cx',X[i]); ringDev.setAttribute('cy',DEVY[i]); ringDev.style.opacity=1;
+          if(cue) cue.classList.add('hide');
+          if(pulse) pulse.classList.add('hide');
+          // position tooltip
+          var anchor=document.getElementById('lbpt'+i);
+          var cr=card.getBoundingClientRect(), ar=anchor.getBoundingClientRect();
+          tip.style.left=(ar.left-cr.left+ar.width/2)+'px';
+          tip.style.top=(ar.top-cr.top)+'px';
+          tip.classList.add('on');
+        }
+        h.addEventListener('mouseenter',show);
+        h.addEventListener('click',show);
+        h.addEventListener('mouseleave',hide);
+      });
+    })();
+    </script>
+  </div>
+</section>
+
+<!-- WHY IT'S HARD -->
+<section id="hard">
+  <div class="wrap">
+    <div class="kicker">Why this is a different problem</div>
+    <h2>Autonomous ML research has been demonstrated — at GPT-2 scale</h2>
+    <p>Most public autonomous-research demos run at roughly GPT-2-class (~124M) budgets, where an experiment takes minutes and a failed run is free to retry. That "retry cheaply" assumption is what closes the loop. At frontier post-training it breaks: one trial is a multi-week run on an H200 cluster, and the moves that are free at small scale become prohibitive.</p>
+    <table>
+      <thead>
+        <tr><th>Element</th><th>GPT-2-class (~124M)</th><th>Frontier post-training (30B)</th><th>Gap</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>hypothesis</td>
+          <td>Narrow space: mostly architecture &amp; optimiser coefficients.</td>
+          <td>Wide design space: synthetic-data construction, SFT/RL choice, loss design, schedules, data mixture, checkpoint selection.</td>
+          <td class="ratio">~10×</td>
+        </tr>
+        <tr>
+          <td>execution</td>
+          <td>Minutes per run; each experiment fixed to a ~5-minute budget.</td>
+          <td>Multi-week H200 runs over a full training stack, data pipeline, and vLLM evaluation.</td>
+          <td class="ratio">~10³×</td>
+        </tr>
+        <tr>
+          <td>strategy</td>
+          <td>Feedback in minutes, so broad sweeping and hill-climbing are affordable.</td>
+          <td>Feedback per trial after hours/days, noisy and distribution-shifted — budget must be allocated across a few hypotheses.</td>
+          <td class="ratio">~10²×</td>
+        </tr>
+        <tr>
+          <td>infra</td>
+          <td>Single PyTorch script, single GPU, one metric.</td>
+          <td>Multi-H200 orchestration, persistent storage, checkpoint management, eval harness, failure recovery.</td>
+          <td class="ratio">~10²×</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="note">Ratios are illustrative order-of-magnitude estimates, not measurements.</p>
+  </div>
+</section>
+
+<!-- FINDINGS -->
+<section id="findings">
+  <div class="wrap">
+    <div class="kicker">What closing the loop produced</div>
+    <h2>The score is the headline. These are the reason it matters.</h2>
+    <div class="finds">
+      <div class="find">
+        <div class="tag">01 · Discovery, not just optimization</div>
+        <h3>The loop found a data-mix move the operator's prior said should <em>hurt</em>.</h3>
+        <p>It chose to 2× upsample one domain (5.9% → 11.1% of the mix) — a move the prevailing cannibalisation prior predicts should degrade other domains. It didn't: the change lifted performance off-target. This is a verifiable result the operator's prior would have excluded — the kind of outcome a within-prior optimiser is not built to produce.</p>
+      </div>
+      <div class="find g">
+        <div class="tag">02 · It revised what counts as evidence</div>
+        <h3>Mid-campaign, the loop stopped trusting its own proxy metric.</h3>
+        <p>Early rounds optimized the internal dev score. Later rounds drove that score to record highs (dev 0.93–0.94, a weak domain lifted from ~0.65 to 0.82) — yet the external target didn't move. The loop concluded the easiest proxy to improve was no longer the causal bottleneck, and inverted its objective: it began asking for interventions that might <em>lower</em> the proxy while improving the real target.</p>
+      </div>
+      <div class="find gd">
+        <div class="tag">03 · The loop closes where retrying isn't free</div>
+        <h3>Convergence under a cost structure an order of magnitude harsher.</h3>
+        <p>No "retry cheaply." Each of the four rounds spawned 8 identical full-stack agents that edited recipes, launched real GPU jobs, debugged failures, and selected checkpoints — and the campaign still converged monotonically. We report this as infrastructure evidence that the loop can be made to close at this scale.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SYSTEM -->
+<section id="system">
+  <div class="wrap">
+    <div class="kicker">System design · the one idea</div>
+    <h2>The obvious design failed. The opposite one worked.</h2>
+    <p class="lead">We first built what looked right: specialised data / training / eval agents handing off mid-states, like a human research team. It did not scale — compounding from mid-states compounds <em>unobserved variance</em>, and corrupts the very signal selection depends on.</p>
+    <p>The configuration that worked is the inverse. One immutable, human-audited substrate that every round re-forks and no winner overwrites. Memory-free, identical workers instead of specialised roles. A bounded meta-agent that can only rewrite the next round's search policy — never the substrate it runs on. One principle ties them together:</p>
+    <div class="principle">
+      <p><b>Asymmetric freedom.</b> Zero degrees of freedom on the axes that must stay invariant for trials to remain comparable — substrate, evaluation, baseline. Maximal freedom on the one axis where exploration pays — which semantic mutation to attempt. Freeze what must hold; spend all the freedom where it counts.</p>
+    </div>
+    <p class="note" style="margin-top:20px">Full mechanics — the immutable substrate, memory-free workers, the constitutionally bounded meta-agent, and the design ablations — are in the <a href="#">tech report ↓</a></p>
+  </div>
+</section>
+
+<!-- LIMITATIONS -->
+<section id="limits">
+  <div class="wrap">
+    <div class="kicker">Limitations — read before you quote us</div>
+    <h2>What this is <em>not</em> evidence of</h2>
+    <p class="lead">We'd rather you find these here than discover them later. The result is real and auditable, and it is narrow.</p>
+    <div class="limbox">
+      <div class="limrow"><span class="mk">n=1 task</span><div class="txt"><b>One benchmark.</b> A single public leaderboard is the external anchor. Whether the loop produces out-of-prior findings elsewhere is open.</div></div>
+      <div class="limrow"><span class="mk">n=1 base</span><div class="txt"><b>One base model.</b> A single 30B Nemotron. We don't yet know if the behaviour is a property of the loop or of this checkpoint.</div></div>
+      <div class="limrow"><span class="mk">infra only</span><div class="txt"><b>120B &amp; 550B are infrastructure evidence only.</b> The same system post-trains them end-to-end, but with no public human baseline at that scale, this shows the loop <em>closes</em> there — not that its output is competitive.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- SERIES CTA -->
+<section id="series" class="series">
+  <div class="wrap">
+    <div class="kicker">The thesis · what comes next</div>
+    <h2>An AI researcher for every stage of building AI.</h2>
+    <p class="lead">Today, humans build AI in three stages. The path to recursive self-improvement is to hand each stage to an autonomous AI researcher — and let the output make the next round of research better.</p>
+
+    <div style="margin-top:30px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 20px">
+      <svg viewBox="0 0 1180 600" width="100%" role="img" aria-label="An AI researcher for every stage of building AI">
+        <defs>
+          <marker id="ar" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#b0a892"/>
+          </marker>
+        </defs>
+
+        <!-- THIS REPORT ribbon over post-training -->
+        <rect x="412" y="34" width="126" height="26" rx="13" fill="#bd4a26"/>
+        <text x="475" y="51" text-anchor="middle" font-family="'SF Mono',monospace" font-size="11" letter-spacing="1.5" fill="#f0eadd">THIS REPORT ▾</text>
+
+        <!-- ===== CARD 1: Pre-training (open frontier) ===== -->
+        <rect x="40" y="70" width="250" height="300" rx="14" fill="#f6f1e7" stroke="#bdb39c" stroke-width="1.4" stroke-dasharray="5 5"/>
+        <text x="64" y="108" font-family="'SF Mono',monospace" font-size="11" letter-spacing="2" fill="#a39a86">HUMAN STAGE</text>
+        <circle cx="72" cy="132" r="6" fill="none" stroke="#8c8578" stroke-width="2"/>
+        <path d="M63,148 a9,9 0 0 1 18,0" fill="none" stroke="#8c8578" stroke-width="2"/>
+        <text x="92" y="146" font-family="'SF Mono',monospace" font-size="15" fill="#a39a86">→</text>
+        <rect x="110" y="124" width="30" height="20" rx="5" fill="#9c7526"/>
+        <text x="125" y="138" text-anchor="middle" font-family="'SF Mono',monospace" font-size="10" font-weight="700" fill="#f0eadd">AI</text>
+        <text x="64" y="196" font-family="Georgia,serif" font-size="23" font-weight="700" fill="#211e19">Pre-training</text>
+        <line x1="64" y1="214" x2="266" y2="214" stroke="#e0d8c6" stroke-width="1"/>
+        <text x="64" y="250" font-family="Georgia,serif" font-size="17" font-weight="700" fill="#9c7526">→ Auto-PreTrain</text>
+        <rect x="64" y="270" width="116" height="28" rx="14" fill="#efe7d8"/>
+        <text x="122" y="289" text-anchor="middle" font-family="'SF Mono',monospace" font-size="11.5" fill="#6e675b">open frontier</text>
+
+        <line x1="298" y1="220" x2="342" y2="220" stroke="#b0a892" stroke-width="1.6" marker-end="url(#ar)"/>
+
+        <!-- ===== CARD 2: Post-training (this work) ===== -->
+        <rect x="350" y="70" width="250" height="300" rx="14" fill="#f6f1e7" stroke="#bd4a26" stroke-width="2.2"/>
+        <text x="374" y="108" font-family="'SF Mono',monospace" font-size="11" letter-spacing="2" fill="#a39a86">HUMAN STAGE</text>
+        <circle cx="382" cy="132" r="6" fill="none" stroke="#8c8578" stroke-width="2"/>
+        <path d="M373,148 a9,9 0 0 1 18,0" fill="none" stroke="#8c8578" stroke-width="2"/>
+        <text x="402" y="146" font-family="'SF Mono',monospace" font-size="15" fill="#a39a86">→</text>
+        <rect x="420" y="124" width="30" height="20" rx="5" fill="#bd4a26"/>
+        <text x="435" y="138" text-anchor="middle" font-family="'SF Mono',monospace" font-size="10" font-weight="700" fill="#f0eadd">AI</text>
+        <text x="374" y="196" font-family="Georgia,serif" font-size="23" font-weight="700" fill="#211e19">Post-training</text>
+        <line x1="374" y1="214" x2="576" y2="214" stroke="#e8d3c6" stroke-width="1"/>
+        <text x="374" y="250" font-family="Georgia,serif" font-size="17" font-weight="700" fill="#bd4a26">→ Auto-PostTrain</text>
+        <rect x="374" y="270" width="196" height="28" rx="14" fill="#f0d8cc"/>
+        <text x="472" y="289" text-anchor="middle" font-family="'SF Mono',monospace" font-size="11.5" fill="#bd4a26">≈ human parity @ 30B · 0.86 vs 0.87</text>
+
+        <line x1="608" y1="220" x2="652" y2="220" stroke="#b0a892" stroke-width="1.6" marker-end="url(#ar)"/>
+
+        <!-- ===== CARD 3: Harness building ===== -->
+        <rect x="660" y="70" width="250" height="300" rx="14" fill="#f6f1e7" stroke="#bdb39c" stroke-width="1.4"/>
+        <text x="684" y="108" font-family="'SF Mono',monospace" font-size="11" letter-spacing="2" fill="#a39a86">HUMAN STAGE</text>
+        <circle cx="692" cy="132" r="6" fill="none" stroke="#8c8578" stroke-width="2"/>
+        <path d="M683,148 a9,9 0 0 1 18,0" fill="none" stroke="#8c8578" stroke-width="2"/>
+        <text x="712" y="146" font-family="'SF Mono',monospace" font-size="15" fill="#a39a86">→</text>
+        <rect x="730" y="124" width="30" height="20" rx="5" fill="#2f6b54"/>
+        <text x="745" y="138" text-anchor="middle" font-family="'SF Mono',monospace" font-size="10" font-weight="700" fill="#f0eadd">AI</text>
+        <text x="684" y="196" font-family="Georgia,serif" font-size="23" font-weight="700" fill="#211e19">Harness building</text>
+        <line x1="684" y1="214" x2="886" y2="214" stroke="#d3e0d8" stroke-width="1"/>
+        <text x="684" y="250" font-family="Georgia,serif" font-size="17" font-weight="700" fill="#2f6b54">→ A-Evolve-Agent</text>
+        <rect x="684" y="270" width="182" height="28" rx="14" fill="#d9e6df"/>
+        <text x="775" y="289" text-anchor="middle" font-family="'SF Mono',monospace" font-size="11.5" fill="#2f6b54">✓ SOTA where shipped</text>
+
+        <line x1="918" y1="220" x2="962" y2="220" stroke="#b0a892" stroke-width="1.6" marker-end="url(#ar)"/>
+
+        <!-- ===== Capable AI Agent ===== -->
+        <rect x="970" y="138" width="170" height="164" rx="16" fill="#1b1814"/>
+        <text x="1055" y="208" text-anchor="middle" font-family="Georgia,serif" font-size="20" font-weight="700" fill="#f0eadd">Capable</text>
+        <text x="1055" y="232" text-anchor="middle" font-family="Georgia,serif" font-size="20" font-weight="700" fill="#f0eadd">AI Agent</text>
+        <text x="1055" y="262" text-anchor="middle" font-family="'SF Mono',monospace" font-size="11" fill="#d98a5a">stronger every round</text>
+
+        <!-- ===== RSI loop ===== -->
+        <path d="M1055,304 C1055,560 1055,560 611,560 C300,560 165,560 165,388"
+              fill="none" stroke="#bd4a26" stroke-width="2" stroke-dasharray="7 6"/>
+        <path d="M157,396 L165,378 L173,396 Z" fill="#bd4a26"/>
+        <rect x="486" y="546" width="250" height="28" rx="14" fill="#f0d8cc"/>
+        <text x="611" y="565" text-anchor="middle" font-family="'SF Mono',monospace" font-size="12" letter-spacing="1" fill="#bd4a26">recursive self-improvement loop</text>
+      </svg>
+    </div>
+
+    <p style="text-align:left;max-width:none;margin-top:26px;color:var(--ink2)">A-Evo Lab studies <b>self-evolving agents</b> under one thesis — <b>AI-as-researcher</b>: frontier agents and models play the <em>researcher</em> in the loop that builds better AI. We're building an autonomous researcher for each of the three stages, on <b>one shared stack — <a href="https://github.com/A-EVO-Lab/">A-Evolve</a></b> — so the whole lab iterates fast. The 30B result on this page is the <b style="color:var(--rust)">post-training</b> node.</p>
+
+    <div class="btns" style="margin-top:30px">
+      <a class="btn primary" href="#">Read the tech report (PDF)</a>
+      <a class="btn ghost" href="https://x.com/HenryL_AI">Follow on X</a>
+      <a class="btn ghost" href="https://github.com/A-EVO-Lab/">GitHub · A-Evolve framework</a>
+    </div>
+
+    <div style="margin-top:44px">
+      <div class="kicker" style="text-align:left">Cite</div>
+      <pre>@techreport{shi2026aevolvetraining,
+  <span class="k">title</span>       = {A-Evolve-Training: First-at-Scale Autonomous
+                 Post-Training of a 30B Model},
+  <span class="k">author</span>      = {Shi, Zhan and He, Bing and Sang, Yisi and Lu, Hanqing},
+  <span class="k">institution</span> = {A-EVO Lab, Amazon},
+  <span class="k">year</span>        = {2026},
+  <span class="k">note</span>        = {NVIDIA Nemotron-Reasoning Challenge; public
+                 leaderboard standing as of 2026-06-01.}
+}</pre>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>© 2026 A-EVO LAB, AMAZON · ZHAN SHI · BING HE · YISI SANG · HANQING LU</div>
+    <div>BUILT ON THE A-EVOLVE FRAMEWORK · LEADERBOARD AS OF 2026-06-01</div>
+  </div>
+</footer>
+
+</body>
+</html>
