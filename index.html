@@ -206,7 +206,7 @@
 <header>
   <div class="wrap">
     <div class="eyebrow">A-EVO Lab · Autonomous research at frontier scale</div>
-    <h1>An AI ran the <span class="hl">entire post-training loop</span> for a 30B model — with no human in the loop.</h1>
+    <h1>An AI ran the <span class="hl">post-training loop</span> for a 30B model — with no human in the loop.</h1>
     <p class="sub">Four self-directed rounds on a production GPU cluster. The autonomously produced model placed <b>8th of ~4,000</b> on NVIDIA's Nemotron Reasoning Challenge — one point behind the top human team.</p>
 
     <p style="margin-top:18px;font-size:16.5px;color:var(--mut);max-width:760px;line-height:1.5">The same autonomous system has since post-trained the <b style="color:var(--ink)">120B and 550B</b> Nemotron models end-to-end — evidence the loop <em>closes</em> at that scale too. (No public human baseline exists there yet, so we report it as infrastructure evidence, not a competitiveness claim.)</p>
@@ -230,12 +230,12 @@
       </div>
     </div>
 
+    <p class="note" style="margin-top:16px">Notes — NVIDIA Nemotron Reasoning Challenge; public leaderboard standing as of 2026-06-01. Rank 8 of ~4,000 entries.</p>
+
     <div style="margin-top:38px;background:var(--card2);border:1px solid var(--line2);border-left:5px solid var(--rust);border-radius:12px;padding:24px 26px;max-width:790px">
       <div style="font-family:var(--mono);font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--rust);margin-bottom:11px">The counter-intuitive headline</div>
       <p style="margin:0;font-size:18.5px;color:var(--ink);line-height:1.55">The score isn't the point. Mid-campaign, the loop detected that its <b>own internal dev metric had stopped tracking external performance</b> on the visibly weakest domain — candidates pushed it to record highs without moving the real target — and revised its own search policy in response: it stopped asking for higher dev and instead asked for interventions that lowered the now-misleading proxy while improving the external target. We treat this as direct, auditable evidence that a scaled autonomous loop can produce <b style="color:var(--rust)">discovery, not only optimisation</b>: it detected that the measurement frame itself had become misleading and changed what counted as evidence.</p>
     </div>
-
-    <p class="note" style="margin-top:22px">Notes — NVIDIA Nemotron Reasoning Challenge; public leaderboard standing as of 2026-06-01. Rank 8 of ~4,000 entries.</p>
   </div>
 </header>
 
@@ -471,7 +471,7 @@
     <div class="principle">
       <p><b>Asymmetric freedom.</b> Zero degrees of freedom on the axes that must stay invariant for trials to remain comparable — substrate, evaluation, baseline. Maximal freedom on the one axis where exploration pays — which semantic mutation to attempt. Freeze what must hold; spend all the freedom where it counts.</p>
     </div>
-    <p class="note" style="margin-top:20px">Full mechanics — the immutable substrate, memory-free workers, the constitutionally bounded meta-agent, and the design ablations — are in the <a href="#">tech report ↓</a></p>
+    <p class="note" style="margin-top:20px">Full mechanics — the immutable substrate, memory-free workers, the constitutionally bounded meta-agent, and the design ablations — are in the <a href="a-evolve-training.pdf" target="_blank" rel="noopener">tech report ↓</a></p>
   </div>
 </section>
 
@@ -574,7 +574,7 @@
     <p style="text-align:left;max-width:none;margin-top:26px;color:var(--ink2)">A-Evo Lab studies <b>self-evolving agents</b> under one thesis — <b>AI-as-researcher</b>: frontier agents and models play the <em>researcher</em> in the loop that builds better AI. We're building an autonomous researcher for each of the three stages, on <b>one shared stack — <a href="https://github.com/A-EVO-Lab/">A-Evolve</a></b> — so the whole lab iterates fast. The 30B result on this page is the <b style="color:var(--rust)">post-training</b> node.</p>
 
     <div class="btns" style="margin-top:30px">
-      <a class="btn primary" href="#">Read the tech report (PDF)</a>
+      <a class="btn primary" href="a-evolve-training.pdf" target="_blank" rel="noopener">Read the tech report (PDF)</a>
       <a class="btn ghost" href="https://x.com/HenryL_AI">Follow on X</a>
       <a class="btn ghost" href="https://github.com/A-EVO-Lab/">GitHub · A-Evolve framework</a>
     </div>
@@ -582,8 +582,8 @@
     <div style="margin-top:44px">
       <div class="kicker" style="text-align:left">Cite</div>
       <pre>@techreport{shi2026aevolvetraining,
-  <span class="k">title</span>       = {A-Evolve-Training: First-at-Scale Autonomous
-                 Post-Training of a 30B Model},
+  <span class="k">title</span>       = {A-Evolve-Training: Autonomous Post-Training
+                 of a 30B Model},
   <span class="k">author</span>      = {Shi, Zhan and He, Bing and Sang, Yisi and Lu, Hanqing},
   <span class="k">institution</span> = {A-EVO Lab, Amazon},
   <span class="k">year</span>        = {2026},
